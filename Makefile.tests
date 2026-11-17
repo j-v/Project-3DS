@@ -1,0 +1,47 @@
+#---------------------------------------------------------------------------------
+# The test build.
+#
+# The gameplay core has no platform calls in it, so the tests are compiled as
+# native binaries for the machine that runs this build (the host), not for the
+# 3DS. The differential outcomes are frozen in tests/fixtures, so the tests
+# need neither the upstream sources nor a sibling checkout.
+#---------------------------------------------------------------------------------
+.SUFFIXES:
+
+BUILD    := build-tests
+TARGET   := p3ds-tests
+
+CXX      ?= c++
+CXXFLAGS := -std=gnu++11 -Wall -Wextra -O2 -g \
+            -I. -Isrc -Isrc/core -Itests \
+            -DP3DS_SOURCE_DIR=\"$(CURDIR)\"
+LDFLAGS  :=
+
+CORE_SOURCES := $(wildcard src/core/*.cpp)
+TEST_SOURCES := $(wildcard tests/*.cpp)
+
+SOURCES := $(CORE_SOURCES) $(TEST_SOURCES)
+OBJECTS := $(patsubst %.cpp,$(BUILD)/%.o,$(notdir $(SOURCES)))
+
+VPATH := src/core:tests
+
+.PHONY: all clean test
+
+all: $(BUILD)/$(TARGET)
+
+$(BUILD)/$(TARGET): $(OBJECTS)
+	@mkdir -p $(BUILD)
+	@echo linking $@
+	@$(CXX) $(OBJECTS) -o $@ $(LDFLAGS)
+
+$(BUILD)/%.o: %.cpp
+	@mkdir -p $(BUILD)
+	@echo $(notdir $<)
+	@$(CXX) $(CXXFLAGS) -c $< -o $@
+
+test: $(BUILD)/$(TARGET)
+	@./$(BUILD)/$(TARGET)
+
+clean:
+	@echo clean ...
+	@rm -fr $(BUILD)

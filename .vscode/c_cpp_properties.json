@@ -1,0 +1,36 @@
+{
+    "version": 4,
+    "configurations": [
+        {
+            "name": "3DS",
+            "includePath": [
+                "${workspaceFolder}/src",
+                "${workspaceFolder}/src/core",
+                "${workspaceFolder}/src/platform",
+                "${workspaceFolder}/build",
+                "${workspaceFolder}/.devkitpro/libctru/include",
+                "${workspaceFolder}/.devkitpro/portlibs/3ds/include",
+                "${workspaceFolder}/.devkitpro/devkitARM/arm-none-eabi/include/c++/current",
+                "${workspaceFolder}/.devkitpro/devkitARM/arm-none-eabi/include/c++/current/arm-none-eabi",
+                "${workspaceFolder}/.devkitpro/devkitARM/lib/gcc/arm-none-eabi/current/include",
+                "${workspaceFolder}/.devkitpro/devkitARM/arm-none-eabi/include"
+            ],
+            "defines": [
+                "__3DS__"
+            ],
+            "compilerPath": "/usr/bin/clang++",
+            "compilerArgs": [
+                "--target=arm-none-eabi",
+                "-march=armv6k",
+                "-mfloat-abi=hard",
+                "-fno-rtti",
+                "-fno-exceptions",
+                "-nostdinc",
+                "-nostdlibinc"
+            ],
+            "intelliSenseMode": "linux-clang-arm",
+            "cStandard": "gnu11",
+            "cppStandard": "gnu++11"
+        }
+    ]
+}

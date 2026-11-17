@@ -1,0 +1,26 @@
+build/
+build-diag/
+
+*.3dsx
+*.3dsx.smdh
+*.smdh
+*.elf
+*.cia
+*.lst
+*.map
+
+# The packaging tool that is downloaded for the CIA build
+tools/.cache/
+
+# The build of the tests
+build-tests/
+build-tests-container/
+
+# The headers extracted for the editor
+.devkitpro/
+
+# The temporary files of the tests
+*.tmp
+
+# dump files
+*.dmp
