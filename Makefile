@@ -28,7 +28,10 @@ FONTS    := fonts
 GFXBUILD := $(BUILD)
 
 APP_TITLE       := Project 3DS: MegaSlide CoolMix+
-APP_DESCRIPTION := Project 3DS: MegaSlide CoolMix+
+# build.sh resolves the version from the git tag and passes it in; the fallback
+# keeps a plain make usable when APP_VERSION is not set
+APP_VERSION     ?= 0.0.0-dev
+APP_DESCRIPTION := v$(APP_VERSION)
 APP_AUTHOR      := Project 3DS contributors, based on Project DS by Hydr8gon
 
 #---------------------------------------------------------------------------------
@@ -198,6 +201,20 @@ $(OUTPUT).3dsx    :    $(OUTPUT).elf $(_3DSXDEPS)
 $(OFILES_SOURCES) : $(HFILES)
 
 $(OUTPUT).elf    :    $(OFILES)
+
+#---------------------------------------------------------------------------------
+# The SMDH carries APP_VERSION, but make cannot tell that a variable changed.
+# The stamp is rewritten only when the version does, which makes a new tag or a
+# dirty tree rebuild the metadata without relinking on every build.
+#---------------------------------------------------------------------------------
+$(DEPSDIR)/.app-version: FORCE
+	@mkdir -p $(DEPSDIR)
+	@printf '%s\n' '$(APP_VERSION)' | cmp -s - $@ || printf '%s\n' '$(APP_VERSION)' > $@
+
+$(OUTPUT).smdh    :    $(DEPSDIR)/.app-version
+
+.PHONY: FORCE
+FORCE:
 
 #---------------------------------------------------------------------------------
 # you need a rule like this for each extension you use as binary data

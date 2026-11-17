@@ -10,6 +10,12 @@
 #
 # The container has no tool that can write a CIA, so makerom runs on the host:
 # it only needs the ELF and the metadata that the container has just built.
+#
+# The workspace is writable so that the build output lands on the host, but
+# everything that the host executes afterwards (this script and tools/) is
+# mounted read-only, so a compromised image cannot plant code that runs
+# outside the container. makerom is cached outside the checkout for the same
+# reason.
 
 set -e
 
@@ -17,23 +23,67 @@ IMAGE="${DKP_IMAGE:-devkitpro/devkitarm:latest}"
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 TARGET="${TARGET:-project-3ds}"
 
+# The version comes from the git tags. It is resolved on the host because the
+# devkitPro image does not necessarily have git, and then passed to make as
+# APP_VERSION. An explicitly set APP_VERSION wins, which is useful for a
+# build from a source archive that has no tags.
+APP_VERSION="${APP_VERSION:-}"
+if [ -z "$APP_VERSION" ]; then
+    APP_VERSION="$("$ROOT/tools/version.sh")"
+fi
+
+# The Makefile interpolates APP_VERSION into a shell command, so it is
+# validated here instead of being trusted because it normally comes from a tag
+SEMVER='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'
+if ! printf '%s\n' "$APP_VERSION" | grep -Eq "$SEMVER"; then
+    echo "APP_VERSION is not a semantic version: $APP_VERSION" >&2
+    exit 1
+fi
+
+export APP_VERSION
+
+if [ "${1:-}" = "version" ]; then
+    echo "$APP_VERSION"
+    exit 0
+fi
+
 # makerom is pinned: the binary is downloaded once, checked against the
-# checksum below, and kept in tools/.cache so that later builds work offline
+# checksum below, and cached so that later builds work offline. The cache is
+# outside the checkout: a binary planted inside it by the build container
+# would be executed on the host
 MAKEROM_VERSION="0.19.0"
+
+makerom_cache_root() {
+    if [ -n "${MAKEROM_CACHE:-}" ]; then
+        echo "$MAKEROM_CACHE"
+    elif [ -n "${XDG_CACHE_HOME:-}" ]; then
+        echo "$XDG_CACHE_HOME/project-3ds"
+    else
+        echo "${HOME:-/tmp}/.cache/project-3ds"
+    fi
+}
 
 if ! command -v docker > /dev/null 2>&1; then
     echo "docker is needed to build the project" >&2
     exit 1
 fi
 
-docker_make() {
+docker_workspace() {
     docker run --rm \
         --user "$(id -u):$(id -g)" \
         --env HOME=/tmp \
+        --env APP_VERSION="$APP_VERSION" \
+        --cap-drop ALL \
+        --security-opt no-new-privileges \
         --volume "$ROOT:/workspace" \
+        --volume "$ROOT/build.sh:/workspace/build.sh:ro" \
+        --volume "$ROOT/tools:/workspace/tools:ro" \
         --workdir /workspace \
-        "$IMAGE" \
-        make "$@"
+        "$IMAGE" "$@"
+}
+
+docker_make() {
+    docker_workspace make "$@"
 }
 
 # The release binaries of makerom are named after the system they run on
@@ -78,7 +128,7 @@ extract_zip() {
 # the project's cache on the first run
 fetch_makerom() {
     platform="$1"
-    cache="$ROOT/tools/.cache/makerom-$MAKEROM_VERSION-$platform"
+    cache="$(makerom_cache_root)/makerom-$MAKEROM_VERSION-$platform"
     binary="$cache/makerom"
 
     if [ -x "$binary" ]; then
@@ -162,13 +212,9 @@ build_cia() {
 if [ "$1" = "test" ]; then
     shift
     echo "Running the tests with $IMAGE"
-    exec docker run --rm \
-        --user "$(id -u):$(id -g)" \
-        --env HOME=/tmp \
-        --volume "$ROOT:/workspace" \
-        --workdir /workspace \
-        "$IMAGE" \
+    docker_workspace \
         make -f Makefile.tests BUILD=build-tests-container test "$@"
+    exit 0
 fi
 
 # The CIA is built from the same ELF as the 3dsx, so this builds the project

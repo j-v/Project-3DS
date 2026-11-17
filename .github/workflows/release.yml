@@ -1,0 +1,192 @@
+name: Release
+
+# A release is published when a v* tag is pushed. The workflow that runs is the
+# one on the tagged commit, so the tag itself is the trust boundary: it must be
+# protected, and publishing waits for the `release` environment, which should
+# require a reviewer. See docs/releasing.md.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+# Nothing here needs to write until the publish job, which asks for it itself
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # The image tag is rebuilt over time, so it does not identify a toolchain.
+  # This is the digest of the devkitpro/devkitarm:latest multi-architecture
+  # index, so the runner resolves it to the image for its own platform. It is
+  # what the released binaries were built with: bump it deliberately and
+  # record the change; see docs/releasing.md.
+  DKP_IMAGE: devkitpro/devkitarm@sha256:116afba8df8453961de2936ffab20dd441edf4d682856c1ec8b0e53d7ed0bbf5
+
+jobs:
+  build:
+    name: Build the release files
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out the tag
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          # The build container shares this checkout. A token left in
+          # .git/config would be readable by anything that runs there
+          persist-credentials: false
+
+      - name: Validate the tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -eu
+
+          ./tools/version.sh --check-tag "$TAG"
+
+          exact="$(git describe --tags --exact-match --match "$TAG" 2> /dev/null || true)"
+          [ "$exact" = "$TAG" ] \
+            || { echo "$TAG is not the tag on HEAD" >&2; exit 1; }
+
+          # A tag on a commit that is not in the default branch is not a
+          # release: that commit was never reviewed or tested as part of it
+          status="$(gh api "repos/${GITHUB_REPOSITORY}/compare/${DEFAULT_BRANCH}...${TAG}" --jq .status)"
+          case "$status" in
+            identical|behind) ;;
+            *)
+              echo "$TAG is not on $DEFAULT_BRANCH ($status)" >&2
+              exit 1
+              ;;
+          esac
+
+          version="$(./build.sh version)"
+          [ "$version" = "${TAG#v}" ] \
+            || { echo "tag $TAG resolves to version $version" >&2; exit 1; }
+
+          echo "APP_VERSION=$version" >> "$GITHUB_ENV"
+
+      - name: Run the tests
+        run: ./build.sh test
+
+      - name: Build the 3DSX and the CIA
+        run: ./build.sh cia
+
+      - name: Package the release files
+        run: |
+          set -eu
+          mkdir -p dist/docs
+          cp project-3ds.3dsx "dist/project-3ds-${GITHUB_REF_NAME}.3dsx"
+          cp project-3ds.cia "dist/project-3ds-${GITHUB_REF_NAME}.cia"
+          cp README.md LICENSE NOTICE.md THIRD-PARTY-NOTICES.md dist/
+          cp fonts/LICENSE-Liberation.txt dist/LICENSE-Liberation.txt
+          cp docs/releasing.md dist/docs/releasing.md
+
+          cd dist
+          zip -9 -q "project-3ds-${GITHUB_REF_NAME}.zip" \
+            "project-3ds-${GITHUB_REF_NAME}.3dsx" \
+            "project-3ds-${GITHUB_REF_NAME}.cia" \
+            README.md LICENSE NOTICE.md THIRD-PARTY-NOTICES.md \
+            LICENSE-Liberation.txt docs/releasing.md
+
+          sha256sum project-3ds-* README.md LICENSE NOTICE.md \
+            THIRD-PARTY-NOTICES.md LICENSE-Liberation.txt docs/releasing.md \
+            > SHA256SUMS
+
+      - name: Keep the release files
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+        with:
+          name: release-files
+          path: dist
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    name: Publish the release
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Publishing is the step that puts binaries on user hardware, so it happens
+    # in an environment that should require a reviewer. It is also the only
+    # job with write access
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - name: Get the release files
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-files
+          path: dist
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -eu
+
+          prerelease=""
+          case "${TAG#v}" in
+            *-*) prerelease="--prerelease" ;;
+          esac
+
+          if ! gh release view "$TAG" > /dev/null 2>&1; then
+            # A draft is created first and published at the end: with immutable
+            # releases enabled, assets cannot be added once a release is public
+            # shellcheck disable=SC2086
+            gh release create "$TAG" \
+              --draft \
+              --title "Project 3DS $TAG" \
+              --generate-notes \
+              $prerelease
+          fi
+
+          draft="$(gh release view "$TAG" --json isDraft --jq .isDraft)"
+
+          if [ "$draft" = "true" ]; then
+            # Labels become the download description in the release page
+            gh release upload "$TAG" --clobber \
+              "dist/project-3ds-${TAG}.3dsx#3DSX for the Homebrew Launcher" \
+              "dist/project-3ds-${TAG}.cia#CIA for FBI" \
+              "dist/project-3ds-${TAG}.zip#Binaries, README and licence files" \
+              "dist/LICENSE#GPL-3.0-or-later licence" \
+              "dist/NOTICE.md#Copyright and attribution notices" \
+              "dist/LICENSE-Liberation.txt#OFL-1.1 licence for the bundled font" \
+              "dist/THIRD-PARTY-NOTICES.md#Third-party library licences" \
+              dist/SHA256SUMS dist/README.md dist/docs/releasing.md
+          else
+            # Re-running a failed release must not fail just because the
+            # release was already published. The assets are only republished
+            # when the build is byte-for-byte the same: a published version
+            # must not quietly change under the people who downloaded it
+            published="$(mktemp -d)"
+            gh release download "$TAG" --pattern SHA256SUMS --dir "$published" \
+              2> /dev/null || true
+            if [ ! -f "$published/SHA256SUMS" ] \
+              || ! cmp -s "$published/SHA256SUMS" dist/SHA256SUMS; then
+              echo "the release was built from different sources" >&2
+              echo "publish a new PATCH release instead of replacing the assets" >&2
+              exit 1
+            fi
+            echo "$TAG is already published with these files, nothing to upload"
+          fi
+
+          # Publishing is the step that makes the release, and with immutable
+          # releases enabled its assets and tag are locked from here on
+          if [ "$draft" = "true" ]; then
+            gh release edit "$TAG" --draft=false
+          fi
+
+          source_line="Source code for this release: https://github.com/${GITHUB_REPOSITORY}/tree/${TAG}"
+          body="$(gh release view "$TAG" --json body --jq .body)"
+          case "$body" in
+            *"$source_line"*) ;;
+            *) gh release edit "$TAG" --notes "$(printf '%s\n\n%s' "$body" "$source_line")" ;;
+          esac

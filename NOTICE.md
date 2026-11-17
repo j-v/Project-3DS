@@ -64,7 +64,8 @@ own.
 
 ## Third-party libraries
 
-The build links the devkitPro 3DS libraries and `libvorbisidec` (libtremor).
-Those libraries keep the copyright notices and licences of their authors; they
-are not covered by this project's licence. Keep their notices with any binary
-distribution.
+The build links the devkitPro 3DS libraries and `libogg`/`libvorbisidec`
+(libtremor). Those libraries keep the copyright notices and licences of their
+authors; they are not covered by this project's licence. Their notices are
+reproduced in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md), which is
+included with the release binaries.

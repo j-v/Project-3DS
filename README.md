@@ -12,6 +12,14 @@ charts and music.
 
 **Game executable:** From the Releases page, copy the latest `cia` to your 3DS and install using FBI, or copy the `3dsx` and open it with Homebrew Launcher
 
+### Releases
+
+Releases use semantic versioning and are built from tags by GitHub Actions.
+The installed build carries its version (`v0.1.0`) in the SMDH description.
+Release archives include the licence and notice files, and the release notes
+link to the source code at the tag. See [docs/releasing.md](docs/releasing.md)
+for the tag format and release steps.
+
 ## Building
 
 The script needs [Docker](https://www.docker.com/). 
@@ -81,4 +89,6 @@ tools/         the script that prepares the artwork
 Project 3DS is free software, and is distributed under the terms of the GNU
 General Public License, version 3 or later (GPL-3.0-or-later), like Project DS.
 The original author of Project DS is Hydr8gon, and the copyright of the
-original work is kept. See [NOTICE.md](NOTICE.md) for the details.
+original work is kept. See [NOTICE.md](NOTICE.md) for the details and
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) for the libraries the build
+links.
