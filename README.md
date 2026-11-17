@@ -10,15 +10,7 @@ charts and music.
 
 **Song Library:** If you have Project DS already installed, it will use the same library automatically - **BUT** you must have the OGG audio files present (raw PCM not presently supported). For a new installation, DSC and OGG files dumped from a compatible game should be placed in the `project-ds/dsc` and `project-ds/ogg` folders on the root of your SD card. To load song names and other information, database files ending in _db.txt should be placed in `project-ds/db`. You can follow [Hydr8gon's video guide](https://www.youtube.com/watch?v=ZQ4uYyCW7aA), but make sure you copy the OGG files to the SD card and not the raw PCM files.
 
-**Game executable:** From the Releases page, copy the latest `cia` to your 3DS and install using FBI, or copy the `3dsx` and open it with Homebrew Launcher
-
-### Releases
-
-Releases use semantic versioning and are built from tags by GitHub Actions.
-The installed build carries its version (`v0.1.0`) in the SMDH description.
-Release archives include the licence and notice files, and the release notes
-link to the source code at the tag. See [docs/releasing.md](docs/releasing.md)
-for the tag format and release steps.
+**Game executable:** From the [latest release](https://github.com/j-v/Project-3DS/releases/latest), copy the latest `cia` to your 3DS and install using FBI, or copy the `3dsx` and open it with Homebrew Launcher
 
 ## Building
 
